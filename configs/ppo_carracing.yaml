@@ -1,0 +1,37 @@
+# Ejemplo de configuración para PPO en CarRacing
+# Guarda este archivo en configs/ppo_carracing.yaml y pásalo con --config
+
+# Entorno / preprocesado
+env_id: CarRacing-v3
+seed: 42
+frames_stack: 4
+grayscale: true
+resize: 84
+frame_skip: 2
+
+# PPO
+total_timesteps: 2000000
+learning_rate: 2.5e-4
+n_steps: 2048
+batch_size: 256
+gamma: 0.99
+gae_lambda: 0.95
+clip_range: 0.2
+ent_coef: 0.01
+vf_coef: 0.5
+max_grad_norm: 0.5
+n_epochs: 10
+
+# Logging / guardado
+run_name: ppo_carracing_example
+log_root: results
+eval_freq: 50000
+n_eval_episodes: 10
+save_freq: 100000
+
+# Entrenamiento rápido para pruebas locales (puedes sobrescribir desde la CLI)
+n_envs: 1
+
+# Visualización (solo para debug) - no activar para runs largos
+# render_freq controla cada cuántos pasos se actualiza la ventana cuando se usa --visual
+render_freq: 1

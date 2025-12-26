@@ -1,0 +1,9 @@
+gymnasium[box2d]>=0.29
+stable-baselines3[extra]>=2.3
+# Pin numpy a una versión estable conocida para evitar que pip intente desinstalar/actualizar
+# una instalación local sin metadatos (error uninstall-no-record-file). Ajusta si necesitas otra versión.
+numpy==1.26.4
+torch
+opencv-python
+tensorboard
+pyyaml
