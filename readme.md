@@ -109,6 +109,21 @@ y CPU usados por OpenCV):
 python -m src.train --visual --render-freq 5
 ```
 
+Opciones adicionales para reducir overhead
+----------------------------------------
+
+Si necesitas más eficiencia en modo visual, hay dos flags útiles:
+
+- `--visual-only-preproc`: muestra únicamente la imagen preprocesada que recibe el modelo (desactiva `env_raw`). Esto reduce CPU/IO al evitar convertir y mostrar el render completo.
+- `--visual-scale N`: escala la imagen preprocesada por un factor N para verla mejor. Usa valores pequeños (p.ej. 2 o 4). Por ejemplo, `--visual-scale 4` mostrará 84x84 como ~336x336.
+
+Ejemplo combinando opciones para menos impacto:
+
+```powershell
+python -m src.train --visual --render-freq 10 --visual-only-preproc --visual-scale 3
+```
+
+
 Archivo de configuración de ejemplo
 ----------------------------------
 
@@ -132,6 +147,52 @@ Notas y recomendaciones:
 
 Buenas prácticas y recomendaciones
 - Empieza con `n_envs=1` para probar que todo funciona; si tienes CPU y memoria, sube a 4 o 8 para velocidad.
+ - Empieza con `n_envs=1` para probar que todo funciona; si tienes CPU y memoria, sube a 4, 8 o más para velocidad.
+ - Usa `SubprocVecEnv` (se activa automáticamente cuando `n_envs>1`) para paralelizar las llamadas a `env.step` entre procesos.
+ - Ajusta el número de hilos de cálculo con `--num-threads` si ves sobrecarga de CPU (p. ej. `--num-threads 8`).
+ - Si tienes GPU, fuerza `--device cuda` para mover el entrenamiento a la GPU (aumenta throughput si la red y optimización son el cuello de botella).
+ 
+Por qué ejecutar con `--n-envs 8 --num-threads 8` aumenta la eficiencia
+-----------------------------------------------------------------
+
+Comando recomendado para rendimiento:
+
+```powershell
+python -m src.train --config configs/ppo_carracing.yaml --n-envs 8 --num-threads 8
+```
+
+Explicación práctica y técnica:
+
+- Paralelismo de entornos (SubprocVecEnv / `--n-envs`):
+	- Al usar `n_envs>1` el código crea múltiples entornos que corren en procesos separados (SubprocVecEnv). Eso paraleliza las llamadas a `env.step()` y al preprocesado por frame (resize, gris, etc.).
+	- En vez de ejecutar paso-a-paso un único entorno en el proceso principal (coste Python + llamadas a C por cada frame), se hacen múltiples pasos simultáneos en procesos distintos, lo que suele multiplicar los samples/segundo.
+	- PPO puede aprovechar esto porque toma muestras en paralelo y acumula `n_steps * n_envs` experiencias antes de hacer un update; así reducimos overhead por interacción y aprovechamos mejor la CPU/GPU.
+
+- Control de hilos (BLAS / PyTorch `--num-threads`):
+	- Bibliotecas numéricas (OpenBLAS, MKL, PyTorch) crean threads internos para operaciones lineales. Si dejas que cada proceso cree muchos threads y además lanzas `n_envs` procesos, terminas con demasiados hilos activos y alto overhead de scheduling (context switching).
+	- `--num-threads` fija el número de threads que usa PyTorch/BLAS por proceso (mediante `torch.set_num_threads`). Un valor razonable (p. ej. 8 en una CPU de 8 núcleos) evita sobre-subscription y mejora la utilización real de los núcleos.
+
+- Relación con batch size y latencia de actualización:
+	- Con `n_envs=8`, si `n_steps=2048`, la actualización ve `2048*8` pasos por update — mayúsculo batch que amortigua el coste del optimizador.
+	- Si subes `n_envs` conviene revisar `n_steps` y `batch_size` para mantener tamaños de batch apropiados y no subir la latencia de las actualizaciones más de lo deseado.
+
+- Trade-offs y recomendaciones:
+	- Más `n_envs` = más throughput (it/s) pero mayor uso de memoria y CPU. Empieza por 4, luego 8, y monitoriza uso de CPU/RAM.
+	- Ajusta `--num-threads` para que `n_envs * num_threads` no exceda el número de hardware threads disponibles (p. ej. 8 envs × 8 threads = 64 hilos — esto puede ser excesivo en máquinas pequeñas).
+	- Si la GPU es el cuello (modelo grande), usa `--device cuda`; en ese caso la mejora por aumentar `n_envs` suele ser aún más significativa porque la GPU procesa batches más grandes eficientemente.
+
+Medición y ajustes
+------------------
+
+Para encontrar la combinación óptima en tu máquina, itera: prueba `n_envs` = 2,4,8 y `--num-threads` = 1,2,4,8. Mide:
+
+- it/s (iteraciones por segundo) reportadas por SB3
+- uso de CPU y porcentaje por núcleo (Task Manager / htop)
+- uso de memoria y GPU (si aplica)
+
+Con esos datos elige el punto donde `it/s` se acerca al máximo antes de que CPU/GPU se sature o la memoria se agote.
+
+Si quieres, puedo añadir un pequeño script `bench_envs.py` que automatice estas pruebas en tu máquina y te devuelva la mejor configuración recomendada.
 - Prueba `reward_clip: true` si observas inestabilidad en el aprendizaje.
 - Mantén trazabilidad: cada run guarda su `config.json` y su `logs/*.log`.
 
