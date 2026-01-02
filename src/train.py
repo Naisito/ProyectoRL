@@ -26,6 +26,9 @@ def main():
     parser.add_argument("--total-timesteps", type=int, default=None, help="Sobrescribe total_timesteps del config")
     parser.add_argument("--visual", action="store_true", help="Muestra render y frames preprocesados en tiempo real (n_envs forzado a 1)")
     parser.add_argument("--render-freq", type=int, default=1, help="Frecuencia (en pasos) para actualizar la ventana visual (reduce overhead)")
+    parser.add_argument("--visual-only-preproc", action="store_true", help="Mostrar solo la imagen preprocesada (no el render raw), reduce overhead")
+    parser.add_argument("--visual-scale", type=int, default=4, help="Escala de visualización para la imagen preprocesada (p.ej. 4 -> 336x336)")
+    parser.add_argument("--num-threads", type=int, default=None, help="Número de hilos OpenMP/torch a usar (p.ej. para BLAS); por defecto usa cpu_count())")
     args = parser.parse_args()
 
     overrides = {}
@@ -39,6 +42,18 @@ def main():
     # Seeds y device
     set_global_seeds(cfg.seed)
     device = args.device if args.device else get_device()
+    # Controlar número de hilos para operaciones BLAS/torch (reduce sobreuso de CPU)
+    import torch as _torch
+    if args.num_threads is not None:
+        _torch.set_num_threads(max(1, int(args.num_threads)))
+    else:
+        # limitar a la cantidad de CPUs disponibles por defecto
+        try:
+            import os as _os
+            ncpu = _os.cpu_count() or 1
+            _torch.set_num_threads(ncpu)
+        except Exception:
+            pass
 
     paths = make_run_dirs(cfg.log_root, cfg.run_name)
     print(f"📁 Run dir: {paths['base']}")
@@ -92,7 +107,13 @@ def main():
         eval_freq=cfg.eval_freq,
         n_eval_episodes=cfg.n_eval_episodes,
         save_freq=cfg.save_freq,
-        visual={"render_freq": max(1, int(args.render_freq)), "grayscale": cfg.grayscale, "resize": cfg.resize} if args.visual else None,
+        visual={
+            "render_freq": max(1, int(args.render_freq)),
+            "grayscale": cfg.grayscale,
+            "resize": cfg.resize,
+            "show_raw": not args.visual_only_preproc,
+            "proc_scale": max(1, int(args.visual_scale)),
+        } if args.visual else None,
     )
 
     policy_kwargs = dict(

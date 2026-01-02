@@ -6,7 +6,7 @@ import gymnasium as gym
 import numpy as np
 import cv2
 
-from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
+from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack, SubprocVecEnv
 from stable_baselines3.common.monitor import Monitor
 
 
@@ -128,7 +128,11 @@ def make_vec_env(
         render_mode=render_mode,
     ) for i in range(n_envs)]
 
-    vec = DummyVecEnv(env_fns)
+    # Use subprocess vectorized env when n_envs > 1 to parallelize env.step calls
+    if n_envs > 1:
+        vec = SubprocVecEnv(env_fns)
+    else:
+        vec = DummyVecEnv(env_fns)
     vec = VecFrameStack(vec, n_stack=frames_stack, channels_order="first")
     return vec
 
