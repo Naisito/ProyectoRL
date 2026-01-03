@@ -158,15 +158,50 @@ def make_eval_env(
     env = FrameSkip(env, skip=frame_skip)
 
     if video_dir:
-        env = gym.wrappers.RecordVideo(
-            env,
-            video_dir=video_dir,
-            episode_trigger=lambda ep: ep < record_trigger_episodes,
-            name_prefix="carracing"
-        )
+        # gym / gymnasium changed the RecordVideo parameter name across versions
+        # Try to detect the correct parameter name and call accordingly. If that fails,
+        # fall back to positional argument. If still failing, skip recording with a warning.
+        try:
+            from inspect import signature
+            RecordVideo = gym.wrappers.RecordVideo
+            sig = signature(RecordVideo.__init__)
+            params = sig.parameters
+            kwargs = dict(episode_trigger=lambda ep: ep < record_trigger_episodes, name_prefix="carracing")
+            if 'video_folder' in params:
+                env = RecordVideo(env, video_folder=video_dir, **kwargs)
+            elif 'video_dir' in params:
+                env = RecordVideo(env, video_dir=video_dir, **kwargs)
+            else:
+                # positional fallback
+                env = RecordVideo(env, video_dir, **kwargs)
+        except Exception as e:
+            import warnings
+            try:
+                env = gym.wrappers.RecordVideo(env, video_dir, episode_trigger=lambda ep: ep < record_trigger_episodes, name_prefix="carracing")
+            except Exception as e2:
+                warnings.warn(f"RecordVideo wrapper could not be attached ({e2}); continuing without recording.")
 
     env = PreprocessCarRacing(env, grayscale=grayscale, resize=resize)
-    env = gym.wrappers.FrameStack(env, num_stack=frames_stack)  # (stack, C,H,W) lógico
+
+    # FrameStack wrapper name/signature changed between gym versions.
+    # Try to pick the correct wrapper dynamically and support both keyword and positional args.
+    frame_stack_cls = getattr(gym.wrappers, 'FrameStackObservation', None) or getattr(gym.wrappers, 'FrameStack', None)
+    if frame_stack_cls is None:
+        raise RuntimeError("No FrameStack wrapper found in gym.wrappers")
+
+    try:
+        # preferred keyword arg in newer versions
+        env = frame_stack_cls(env, num_stack=frames_stack)
+    except TypeError:
+        try:
+            # older versions might expect 'n_stack' or 'k' or positional
+            env = frame_stack_cls(env, frames_stack)
+        except Exception:
+            # last-resort: try a common alternative keyword
+            try:
+                env = frame_stack_cls(env, n_stack=frames_stack)
+            except Exception as e:
+                raise
 
     # Convertimos el FrameStack de gym a array (C*stack, H, W) para el modelo SB3:
     env = _GymFrameStackToCHW(env, channels_first=True)

@@ -1,5 +1,6 @@
 # src/callbacks.py
 from typing import Optional
+import os
 
 import cv2
 import numpy as np
@@ -7,7 +8,8 @@ import threading
 import queue
 import time
 
-from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, BaseCallback
+from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
+from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.vec_env import VecEnv
 
 
@@ -173,14 +175,68 @@ def build_callbacks(
         save_vecnormalize=False,
     )
 
-    evaluator = EvalCallback(
+    class TBEvalCallback(BaseCallback):
+        """Custom Eval callback that logs evaluation metrics to TensorBoard via the SB3 logger.
+
+        It runs a policy evaluation every `eval_freq` calls, records mean/std reward and
+        episode length, dumps them to the logger (so they appear in TensorBoard), and
+        saves the best model to `model_dir`.
+        """
+        def __init__(self, eval_env: VecEnv, eval_freq: int, n_eval_episodes: int, best_model_save_path: str | None = None, deterministic: bool = True, verbose: int = 0):
+            super().__init__(verbose)
+            self.eval_env = eval_env
+            self.eval_freq = int(eval_freq)
+            self.n_eval_episodes = int(n_eval_episodes)
+            self.best_model_save_path = best_model_save_path
+            self.deterministic = deterministic
+            self.best_mean_reward = -float('inf')
+
+        def _on_step(self) -> bool:
+            # Only evaluate every eval_freq calls
+            if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+                try:
+                    # evaluate_policy returns episode rewards and lengths when requested
+                    rets = evaluate_policy(self.model, self.eval_env, n_eval_episodes=self.n_eval_episodes, deterministic=self.deterministic, return_episode_rewards=True)
+                    if isinstance(rets, tuple) and len(rets) == 2:
+                        (episode_rewards, episode_lengths) = rets
+                        import numpy as _np
+                        mean_reward = float(_np.mean(episode_rewards))
+                        std_reward = float(_np.std(episode_rewards))
+                        mean_len = float(_np.mean(episode_lengths))
+                        std_len = float(_np.std(episode_lengths))
+
+                        # Log to SB3 logger (TensorBoard)
+                        try:
+                            self.logger.record('eval/mean_reward', mean_reward)
+                            self.logger.record('eval/std_reward', std_reward)
+                            self.logger.record('eval/mean_length', mean_len)
+                            self.logger.record('eval/std_length', std_len)
+                            # also useful: number of evaluations performed
+                            self.logger.record('eval/n_episodes', len(episode_rewards))
+                            # dump with global step = num_timesteps
+                            self.logger.dump(self.num_timesteps)
+                        except Exception:
+                            pass
+
+                        # Save best model if improved
+                        if self.best_model_save_path and mean_reward > self.best_mean_reward:
+                            self.best_mean_reward = mean_reward
+                            try:
+                                self.model.save(os.path.join(self.best_model_save_path, 'best_model'))
+                            except Exception:
+                                pass
+                except Exception:
+                    # Don't crash training if evaluation fails
+                    pass
+            return True
+
+    evaluator = TBEvalCallback(
         eval_env=eval_env,
-        best_model_save_path=model_dir,
-        log_path=log_dir,
         eval_freq=eval_freq,
         n_eval_episodes=n_eval_episodes,
+        best_model_save_path=model_dir,
         deterministic=True,
-        render=False,
+        verbose=0,
     )
 
     callbacks = [checkpoint, evaluator]

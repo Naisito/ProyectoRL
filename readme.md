@@ -196,6 +196,44 @@ Si quieres, puedo añadir un pequeño script `bench_envs.py` que automatice esta
 - Prueba `reward_clip: true` si observas inestabilidad en el aprendizaje.
 - Mantén trazabilidad: cada run guarda su `config.json` y su `logs/*.log`.
 
+Visualizar curvas con TensorBoard
+--------------------------------
+
+Para seguir el progreso del entrenamiento y ver las curvas de aprendizaje (pérdida, entropía, rewards y las métricas de evaluación) usamos TensorBoard. El entrenamiento ya está configurado para exportar logs a la carpeta `results` (cada run crea `results/<run_name>/<timestamp>/logs`).
+
+Instrucciones rápidas:
+
+- Instalar TensorBoard si no lo tienes:
+
+```powershell
+python -m pip install tensorboard
+```
+
+- Lanzar TensorBoard (Windows / PowerShell, local):
+
+```powershell
+tensorboard --logdir results --port 6006
+# Abrir en el navegador: http://localhost:6006
+```
+
+- En Colab (celda Python):
+
+```python
+# en Colab monta primero Drive si los logs están ahí
+%load_ext tensorboard
+%tensorboard --logdir /content/proyecto_rl/results
+```
+
+Notas sobre qué verás:
+- `eval/mean_reward`, `eval/std_reward`, `eval/mean_length`, `eval/std_length` (métricas de evaluación que añadimos). Estas aparecen cada vez que corre la evaluación periódica (`eval_freq`).
+- Métricas internas de entrenamiento grabadas por Stable-Baselines3 (p. ej. loss/actor, loss/critic, entropy, learning_rate, etc.).
+- Para comparar runs: apunta TensorBoard al directorio `results` raiz; verás cada `run_name/timestamp` como experimento separado.
+
+Consejos prácticos:
+- Si no ves las métricas de evaluación, verifica que el callback de evaluación está activo y que `eval_freq` y `n_eval_episodes` están correctamente definidos en tu config/CLI.
+- Aumenta `n_eval_episodes` si la varianza es alta para obtener estimaciones más estables en TensorBoard.
+- Guarda checkpoints frecuentes si planeas analizar curvas a partir de distintos puntos de entrenamiento.
+
 Siguientes pasos (opcionales que puedo añadir):
 - Añadir integración con Weights & Biases o MLflow para tracking automático.
 - Scripts de búsqueda de hiperparámetros (sweep) sobre el YAML.
