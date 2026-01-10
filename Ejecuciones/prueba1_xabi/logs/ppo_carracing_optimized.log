@@ -1,4 +1,0 @@
-2026-01-03 22:46:47,109 | INFO    | root | Inicio del run
-2026-01-03 22:46:47,109 | INFO    | root | Device: cuda
-2026-01-04 19:36:26,913 | INFO    | root | Modelo final guardado en: results/ppo_carracing_optimized/20260103-224647/models/final_model.zip
-2026-01-04 19:36:26,913 | INFO    | root | TensorBoard: tensorboard --logdir results
