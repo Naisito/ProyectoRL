@@ -144,6 +144,8 @@ Notas y recomendaciones:
 ¿Qué hace cada script?
 - `python -m src.train`: carga la configuración (o usa la por defecto), crea directorios en `results/<run_name>/<timestamp>/`, configura logging y entornos, y ejecuta `model.learn`. Guarda checkpoints, el mejor modelo y un `final_model.zip`.
 - `python -m src.eval --model <ruta>`: carga el modelo y ejecuta episodios de evaluación (guarda vídeos si es necesario). Reporta reward medio y desviación estándar.
+- `python -m src.realtime --model <ruta>`: evaluación en tiempo real con render (sin grabar vídeo), útil para ver al agente conducir “en vivo”.
+
 
 Buenas prácticas y recomendaciones
 - Empieza con `n_envs=1` para probar que todo funciona; si tienes CPU y memoria, sube a 4 o 8 para velocidad.
@@ -240,4 +242,5 @@ Siguientes pasos (opcionales que puedo añadir):
 - Tests unitarios básicos para wrappers/envs.
 
 Si quieres, genero un `configs/` con ejemplos listos y un `Makefile`/scripts para lanzar experimentos en Windows (PowerShell).
+
 
